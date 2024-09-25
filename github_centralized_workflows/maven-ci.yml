@@ -1,0 +1,83 @@
+name: Reusable Java-Maven Continuous Integration
+on:
+  workflow_call:
+    # secrets:
+    #   PAT_GITHUB:
+    #     description: GitHub Personal Access Token # for your service account
+    #     required: true
+    inputs:
+      branch:
+        default: develop
+        description: Branch/Tag/Commit SHA
+        required: false
+        type: string
+      java-version:
+        default: '11'
+        description: Java version
+        required: false
+        type: string
+      java-dist:
+        default: temurin
+        description: Java distribution
+        required: false
+        type: string
+      java-arch:
+        default: x64
+        description: Java architecture
+        required: false
+        type: string
+      maven-version:
+        default: '3.8.2'
+        description: Maven version
+        required: false
+        type: string
+      maven-build-goal:
+        # default: ' mvn --batch-mode clean install'
+        description: Build Command
+        required: true
+        type: string
+      maven-test-goal:
+        # default: 'mvn --batch-mode test'
+        description: Unit Test Command
+        required: true
+        type: string
+      maven-deploy-goal:
+        # default: 'mvn --batch-mode deploy'
+        description: Artifact Publish Command
+        required: true
+        type: string
+jobs:
+  build-reuse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-dist }}
+          architecture: ${{ inputs.java-arch }}
+
+      - name: Setup Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: ${{ inputs.maven-version }}
+
+      - name: Application Build
+        run: ${{ inputs.maven-build-goal }}
+
+      - name: Application Test
+        run: ${{ inputs.maven-test-goal }}
+
+      - name: Application Publish
+        run: ${{ inputs.maven-deploy-goal }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

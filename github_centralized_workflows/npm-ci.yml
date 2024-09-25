@@ -1,0 +1,63 @@
+name: Reusable NodeJS-NPM Continuous Integration
+on:
+  workflow_call:
+    # secrets:
+    #   PAT_GITHUB:
+    #     description: GitHub Personal Access Token # for your service account
+    #     required: true
+    inputs:
+      branch:
+        default: develop
+        description: Branch/Tag/Commit SHA
+        required: false
+        type: string
+      node-version:
+        default: '20.x'
+        description: NodeJS version
+        required: false
+        type: string
+      build-command:
+        # default: 'npm run build'
+        description: Build Command
+        required: true
+        type: string
+      test-command:
+        # default: 'npm test'
+        description: Unit Test Command
+        required: true
+        type: string
+      publish-command:
+        # default: 'npm publish'
+        description: Artifact Publish Command
+        required: true
+        type: string
+jobs:
+  build-reuse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Application Build
+        run: |
+          npm ci
+          ${{ inputs.build-command }}
+
+      - name: Application Test
+        run: ${{ inputs.test-command }}
+
+      - name: Application Publish
+        run: ${{ inputs.publish-command }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
