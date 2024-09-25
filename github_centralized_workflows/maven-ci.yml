@@ -77,7 +77,11 @@ jobs:
       - name: Application Test
         run: ${{ inputs.maven-test-goal }}
 
-      - name: Application Publish
-        run: ${{ inputs.maven-deploy-goal }}
+      - name: Publish artifacts into GitHub packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          echo "<settings><servers><server><id>gh</id><username>$(echo "$GITHUB_REPOSITORY" | awk -F / '{print $1}')</username><password>\${env.GITHUB_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
+          REPO="gh::default::https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
+          ${{ inputs.maven-deploy-goal }} -DaltReleaseDeploymentRepository="${REPO}" -DaltSnapshotDeploymentRepository="${REPO}"

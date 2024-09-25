@@ -37,6 +37,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      NODE_REGISTRY: https://npm.pkg.github.com
 
     steps:
       - name: Checkout Code Repository
@@ -48,6 +50,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
+          registry-url: ${{ env.NODE_REGISTRY }}
 
       - name: Application Build
         run: |
@@ -57,7 +60,7 @@ jobs:
       - name: Application Test
         run: ${{ inputs.test-command }}
 
-      - name: Application Publish
+      - name: Publish artifacts into GitHub packages
         run: ${{ inputs.publish-command }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
