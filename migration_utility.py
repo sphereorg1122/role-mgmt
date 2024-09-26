@@ -16,6 +16,11 @@ g = Github(GITHUB_TOKEN)
 # Organization name where the repositories should be created
 ORG_NAME = "capgemini-cigna-demo"
 
+# GitHub repo where the CI templates are stored
+CI_TEMPLATE_REPO = "capgemini-ga-demo/github_centralized_workflows"
+CI_TEMPLATE_BRANCH = "develop"
+CI_TEMPLATE_PATH = "templates"
+
 # Build system file indicators
 build_systems = {
     'maven': 'pom.xml',
@@ -40,11 +45,20 @@ build_systems = {
     'dotNET_NuGet': 'packages.config'
 }
 
-# Directory path for checking build system CI files
-ci_directory = 'github_centralized_workflows'
-
 # CSV file path
 csv_file_path = "migration_log.csv"
+
+def print_separator_with_repo_name(repo_name, phase="Starting migration"):
+    """Prints a separator line with the repo_name in the middle."""
+    total_length = 100  # Total length of the line including equal signs and repo_name
+    repo_display = f" {phase} for {repo_name} "  # Add spaces for padding around repo_name
+    num_equals = total_length - len(repo_display)
+    
+    # Ensure equal signs are evenly distributed on both sides
+    left_equals = num_equals // 2
+    right_equals = num_equals - left_equals
+    
+    print(f"\n{'=' * left_equals}{repo_display}{'=' * right_equals}\n")
 
 def detect_language_and_build_system(repo_name):
     """Detect the primary language and the build system used in a GitHub repository."""
@@ -76,10 +90,19 @@ def load_repositories_from_file(file_path):
         print(f"Error reading the file: {e}")
         return []
 
-def check_ci_file_exists(ci_directory, build_system):
-    """Check if a CI file for the build system exists in the given directory."""
-    ci_file = os.path.join(ci_directory, f"{build_system}-ci.yml")
-    return ci_file if os.path.exists(ci_file) else None
+def fetch_ci_file_from_github(build_system):
+    """Fetch the CI template from the Centralized Workflow repository."""
+    try:
+        repo = g.get_repo(CI_TEMPLATE_REPO)
+        ci_file_path = f"{CI_TEMPLATE_PATH}/{build_system}-ci.yml"
+
+        # Fetch the content if the file exists
+        ci_file = repo.get_contents(ci_file_path, ref=CI_TEMPLATE_BRANCH)
+        return ci_file.decoded_content.decode('utf-8')
+    
+    except Exception as e:
+        print(f"Error fetching Centralized Workflow File for {build_system}: {e}")
+        return None
 
 def create_or_update_repo(repo_name):
     """Create or update a repository in the specified organization."""
@@ -91,7 +114,7 @@ def create_or_update_repo(repo_name):
         try:
             print(f"Creating repository '{repo_name}' under organization '{ORG_NAME}'...")
             repo = g.get_organization(ORG_NAME).create_repo(repo_name)
-            print(f"Repository '{repo.name}' created successfully.")
+            print(f"\033[92mRepository '{repo.name}' created successfully.\033[0m")  # Green for success
             return repo
         except Exception as e:
             print(f"Error creating repository '{repo_name}': {e}")
@@ -139,6 +162,9 @@ if __name__ == "__main__":
         print("No repositories found in the file.")
     else:
         for repo_name in repos:
+            # Add a separator and indicate the start of migration
+            print_separator_with_repo_name(repo_name, phase="Starting migration")
+
             primary_language, build_system = detect_language_and_build_system(repo_name)
             if primary_language and build_system:
                 print(f"Repository: {repo_name}")
@@ -147,15 +173,18 @@ if __name__ == "__main__":
                 
                 build_system_list = build_system.split(', ')  
                 ci_found = False
+                ci_content = None
                 for system in build_system_list:
-                    ci_file_path = check_ci_file_exists(ci_directory, system.strip())
-                    if ci_file_path:
+                    ci_content = fetch_ci_file_from_github(system.strip())
+                    if ci_content:
                         ci_found = True
-                        print(f"  - CI File Found: {ci_file_path}")
+                        print(f"\033[92m  - Centralized Workflow File Found for {system.strip()} from Centralized Workflow Repository\033[0m")  # Green for success
+                        break  # Stop after finding the first valid Centralized Workflow File
                     else:
-                        print(f"  - No matching CI file found for {system.strip()} in {ci_directory}")
+                        # Only print one error message for missing CI file
+                        print(f"\033[91m  - Centralized Workflow File {system.strip()}-ci.yml does not exist in Centralized Workflow Repository.\033[0m")  # Red for failure
 
-                # Proceed with the repository migration regardless of CI file existence
+                # Proceed with the repository migration regardless of Centralized Workflow File existence
                 local_repo_name = repo_name.split('/')[-1]  
                 local_repo_path = os.path.join(os.getcwd(), f"{local_repo_name}-repo")
 
@@ -176,13 +205,14 @@ if __name__ == "__main__":
                     push_url = f'https://github.com/{ORG_NAME}/{local_repo_name}.git'
                     push_branches_and_tags(local_repo_path, push_url)
 
-                    # Only copy the CI file if it exists
-                    if ci_found:
-                        print(f"  - Moving CI file to '{local_repo_name}-repo/.github/workflows/'...")
-                        os.makedirs(os.path.join(local_repo_path, '.github', 'workflows'), exist_ok=True)
-                        shutil.copy(ci_file_path, os.path.join(local_repo_path, '.github', 'workflows'))
-                    else:
-                        print(f"  - No CI file to copy for '{local_repo_name}-repo'.")
+                    # If CI content was fetched, save it to the repo
+                    if ci_found and ci_content:
+                        print(f"  - Saving Centralized Workflow File to '{local_repo_name}-repo/.github/workflows/'...")
+                        workflow_dir = os.path.join(local_repo_path, '.github', 'workflows')
+                        os.makedirs(workflow_dir, exist_ok=True)
+                        ci_file_path = os.path.join(workflow_dir, f"{system.strip()}-ci.yml")
+                        with open(ci_file_path, 'w') as ci_file:
+                            ci_file.write(ci_content)
 
                     # Log the migration details
                     source_url = f'https://github.com/{repo_name}.git'
@@ -195,8 +225,12 @@ if __name__ == "__main__":
                     except Exception as e:
                         os.system(f'rmdir /S /Q "{local_repo_path}"')
 
-                    print(f"  - Migration complete for repository: {repo_name}\n")
+                    print(f"\033[92m  - Migration complete for repository: {repo_name}\033[0m")  # Green for success
                 else:
-                    print(f"Failed to create or update repository '{local_repo_name}' in organization '{ORG_NAME}'.")
+                    print(f"\033[91mFailed to create or update repository '{local_repo_name}' in organization '{ORG_NAME}'.\033[0m")  # Red for failure
+
             else:
-                print(f"Could not determine the language or build system for repository: {repo_name}")
+                print(f"\033[91mCould not determine the language or build system for repository: {repo_name}\033[0m")  # Red for failure
+
+            # End of migration, add another separator
+            print_separator_with_repo_name(repo_name, phase="End of migration")
