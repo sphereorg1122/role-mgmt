@@ -1,4 +1,2 @@
 arunbattepati/java-app
-arunbattepati/npm-app
-epistrephein/rubyproject-template
-dodyg/practical-aspnetcore
+

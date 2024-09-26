@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from github import Github
 import csv
-import time  # Added to introduce a delay
+import time
 
 # GitHub Personal Access Token from environment variable
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
@@ -216,7 +216,9 @@ if __name__ == "__main__":
                         os.system(f'rmdir /S /Q "{local_repo_path}"')
 
                 print(f"  - Cloning the repository to '{local_repo_name}-repo'...")
-                subprocess.run(['git', 'clone', '--mirror', f'https://github.com/{repo_name}.git', local_repo_path], check=True)
+
+                # Clone without the --mirror flag to get a working tree
+                subprocess.run(['git', 'clone', f'https://github.com/{repo_name}.git', local_repo_path], check=True)
 
                 repo = create_or_update_repo(local_repo_name)
 
@@ -231,7 +233,7 @@ if __name__ == "__main__":
                     repo = g.get_organization(ORG_NAME).get_repo(local_repo_name)
                     dest_size, dest_branches = get_repo_details(repo)
 
-                    # If CI content was fetched, save it to the repo
+                    # If CI content was fetched, save it to the repo and commit the changes
                     if ci_found and ci_content:
                         print(f"  - Saving Centralized Workflow File to '{local_repo_name}-repo/.github/workflows/'...")
                         workflow_dir = os.path.join(local_repo_path, '.github', 'workflows')
@@ -239,6 +241,16 @@ if __name__ == "__main__":
                         ci_file_path = os.path.join(workflow_dir, f"{system.strip()}-ci.yml")
                         with open(ci_file_path, 'w') as ci_file:
                             ci_file.write(ci_content)
+
+                        # Commit and push the workflow file
+                        try:
+                            print(f"  - Committing and pushing the CI file for {local_repo_name}...")
+                            subprocess.run(['git', 'add', '.'], cwd=local_repo_path, check=True)
+                            subprocess.run(['git', 'commit', '-m', 'Added CI workflow file'], cwd=local_repo_path, check=True)
+                            subprocess.run(['git', 'push', 'origin', 'main'], cwd=local_repo_path, check=True)
+                            print(f"\033[92m  - CI file pushed successfully to {push_url}\033[0m")
+                        except subprocess.CalledProcessError as e:
+                            print(f"\033[91m  - Error committing or pushing the CI file: {e}\033[0m")
 
                     # Log the migration details
                     source_url = f'https://github.com/{repo_name}.git'
