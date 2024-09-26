@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from github import Github
 import csv
+import time  # Added to introduce a delay
 
 # GitHub Personal Access Token from environment variable
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
@@ -135,12 +136,22 @@ def push_branches_and_tags(local_repo_path, push_url):
     except subprocess.CalledProcessError as e:
         print(f"Error pushing branches and tags: {e}")
 
-def log_migration_to_csv(source_url, target_url, migrated_with_workflow):
+def get_repo_details(repo):
+    """Get repository size and branch count."""
+    try:
+        size = repo.size  # Repository size in KB
+        branches = repo.get_branches().totalCount  # Number of branches
+        return size, branches
+    except Exception as e:
+        print(f"Error fetching repo details: {e}")
+        return None, None
+
+def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
     """Log migration details to a CSV file."""
     file_exists = os.path.isfile(csv_file_path)
     
     with open(csv_file_path, mode='a', newline='') as csv_file:
-        fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file']
+        fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count', 'source_repo_size_kb', 'destination_branch_count', 'destination_repo_size_kb']
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         
         # Write header only if the file doesn't exist
@@ -150,7 +161,11 @@ def log_migration_to_csv(source_url, target_url, migrated_with_workflow):
         writer.writerow({
             'source_github_url': source_url,
             'target_github_url': target_url,
-            'migrated_with_workflow_file': migrated_with_workflow
+            'migrated_with_workflow_file': migrated_with_workflow,
+            'source_branch_count': source_branches,
+            'source_repo_size_kb': source_size,
+            'destination_branch_count': dest_branches,
+            'destination_repo_size_kb': dest_size
         })
 
 if __name__ == "__main__":
@@ -171,6 +186,10 @@ if __name__ == "__main__":
                 print(f"  - Primary Language: {primary_language}")
                 print(f"  - Build System(s): {build_system}")
                 
+                # Get source repo details
+                source_repo = g.get_repo(repo_name)
+                source_size, source_branches = get_repo_details(source_repo)
+
                 build_system_list = build_system.split(', ')  
                 ci_found = False
                 ci_content = None
@@ -205,6 +224,13 @@ if __name__ == "__main__":
                     push_url = f'https://github.com/{ORG_NAME}/{local_repo_name}.git'
                     push_branches_and_tags(local_repo_path, push_url)
 
+                    # Delay to allow GitHub to update repository metadata
+                    time.sleep(10)
+
+                    # Refresh the destination repository object and get updated details
+                    repo = g.get_organization(ORG_NAME).get_repo(local_repo_name)
+                    dest_size, dest_branches = get_repo_details(repo)
+
                     # If CI content was fetched, save it to the repo
                     if ci_found and ci_content:
                         print(f"  - Saving Centralized Workflow File to '{local_repo_name}-repo/.github/workflows/'...")
@@ -217,7 +243,7 @@ if __name__ == "__main__":
                     # Log the migration details
                     source_url = f'https://github.com/{repo_name}.git'
                     target_url = push_url
-                    log_migration_to_csv(source_url, target_url, ci_found)
+                    log_migration_to_csv(source_url, target_url, ci_found, source_size, source_branches, dest_size, dest_branches)
 
                     # Clean up the local repo after push
                     try:
