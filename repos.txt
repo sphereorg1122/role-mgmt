@@ -1,4 +1,4 @@
-arunbattepati/java-app
-arunbattepati/npm-app
-epistrephein/rubyproject-template
-senseops/python_app
+capgemini-cg-demo/java-app
+capgemini-cg-demo/npm-app
+capgemini-cg-demo/rubyproject-template
+capgemini-cg-demo/python_app
