@@ -1,87 +1,23 @@
-name: Reusable Java-Maven Continuous Integration
+name: Java-Maven Continuous Integration
 on:
-  workflow_call:
-    # secrets:
-    #   PAT_GITHUB:
-    #     description: GitHub Personal Access Token # for your service account
-    #     required: true
+  workflow_dispatch:
     inputs:
       branch:
         default: develop
         description: Branch/Tag/Commit SHA
         required: false
         type: string
-      java-version:
-        default: '11'
-        description: Java version
-        required: false
-        type: string
-      java-dist:
-        default: temurin
-        description: Java distribution
-        required: false
-        type: string
-      java-arch:
-        default: x64
-        description: Java architecture
-        required: false
-        type: string
-      maven-version:
-        default: '3.8.2'
-        description: Maven version
-        required: false
-        type: string
-      maven-build-goal:
-        # default: ' mvn --batch-mode clean install'
-        description: Build Command
-        required: true
-        type: string
-      maven-test-goal:
-        # default: 'mvn --batch-mode test'
-        description: Unit Test Command
-        required: true
-        type: string
-      maven-deploy-goal:
-        # default: 'mvn --batch-mode deploy'
-        description: Artifact Publish Command
-        required: true
-        type: string
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.branch }}
+  cancel-in-progress: true
 jobs:
-  build-reuse:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.branch }}
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ inputs.java-version }}
-          distribution: ${{ inputs.java-dist }}
-          architecture: ${{ inputs.java-arch }}
-
-      - name: Setup Maven
-        uses: stCarolas/setup-maven@v5
-        with:
-          maven-version: ${{ inputs.maven-version }}
-
-      - name: Application Build
-        run: ${{ inputs.maven-build-goal }}
-
-      - name: Application Test
-        run: ${{ inputs.maven-test-goal }}
-
-      - name: Publish artifacts into GitHub packages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p ~/.m2
-          echo "<settings><servers><server><id>gh</id><username>$(echo "$GITHUB_REPOSITORY" | awk -F / '{print $1}')</username><password>\${env.GITHUB_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-          REPO="gh::default::https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
-          ${{ inputs.maven-deploy-goal }} -DaltReleaseDeploymentRepository="${REPO}" -DaltSnapshotDeploymentRepository="${REPO}"
+  build:
+    uses: capgemini-ga-demo/github_centralized_workflows/.github/workflows/java-maven-ci.yml@develop
+    secrets: inherit
+    with:
+      branch: ${{ inputs.branch }}
+      java-version: '8'
+      java-dist: temurin
+      maven-build-goal: mvn --batch-mode clean install
+      maven-test-goal: mvn --batch-mode test
+      maven-deploy-goal: mvn --batch-mode deploy
