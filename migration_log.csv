@@ -1,0 +1,5 @@
+source_github_url,target_github_url,migrated_with_workflow_file,source_branch_count
+https://github.com/arunbattepati/java-app.git,https://github.com/capgemini-cigna-demo/java-app.git,True,
+https://github.com/arunbattepati/npm-app.git,https://github.com/capgemini-cigna-demo/npm-app.git,True,
+https://github.com/epistrephein/rubyproject-template.git,https://github.com/capgemini-cigna-demo/rubyproject-template.git,False,
+https://github.com/dodyg/practical-aspnetcore.git,https://github.com/capgemini-cigna-demo/practical-aspnetcore.git,False,

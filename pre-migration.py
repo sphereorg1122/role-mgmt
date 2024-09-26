@@ -1,166 +1,222 @@
 import os
-# from dotenv import find_dotenv, load_dotenv # type: ignore
-import requests
+import shutil
+import subprocess
+import requests  # Added for the API call
+from github import Github
 import csv
-import datetime
+import time
 
-def get_java_build_tool(file):
-    if file['name'].endswith('pom.xml'):
-        return 'maven'
-    elif file['name'].endswith('build.gradle'):
-        return 'gradle'
+# GitHub Personal Access Token from environment variable
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 
-def get_javascript_build_tool(file):
-    if file['name'].endswith('package.json'):
-        return 'npm'
-    elif file['name'].endswith('yarn.lock'):
-        return 'yarn'
+if not GITHUB_TOKEN:
+    raise ValueError("GITHUB_TOKEN environment variable not set.")
 
-def get_build_tool_helper(file, language):
-    match language:
-        case 'java':
-            return get_java_build_tool(file)
-        case 'javascript':
-            return get_javascript_build_tool(file)
-        case _:
+# Initialize GitHub connection for other operations
+g = Github(GITHUB_TOKEN)
+
+# Organization name where the repositories should be created
+ORG_NAME = "capgemini-cigna-demo"
+
+# GitHub repo where the CI templates are stored
+CI_TEMPLATE_REPO = "capgemini-ga-demo/github_centralized_workflows"
+CI_TEMPLATE_BRANCH = "develop"
+CI_TEMPLATE_PATH = "templates"
+
+# CSV file path
+csv_file_path = "migration_log.csv"
+
+
+def get_repo_size_via_api(repo_name, access_token):
+    """Fetch repository size using GitHub API."""
+    api_url = f"https://api.github.com/repos/{repo_name}"
+    headers = {
+        'Authorization': f'token {access_token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses (4xx, 5xx)
+
+        # Parse the response JSON and get the size
+        repo_data = response.json()
+        repo_size = repo_data.get('size')  # Size is in KB
+
+        if repo_size is not None:
+            print(f"Repository {repo_name} size: {repo_size} KB")
+            return repo_size
+        else:
+            print(f"Repository size not found for {repo_name}")
+            return 0
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching repository data: {e}")
+        return 0
+
+
+def print_separator_with_repo_name(repo_name, phase="Starting migration"):
+    """Prints a separator line with the repo_name in the middle."""
+    total_length = 100  # Total length of the line including equal signs and repo_name
+    repo_display = f" {phase} for {repo_name} "  # Add spaces for padding around repo_name
+    num_equals = total_length - len(repo_display)
+
+    # Ensure equal signs are evenly distributed on both sides
+    left_equals = num_equals // 2
+    right_equals = num_equals - left_equals
+
+    print(f"\n{'=' * left_equals}{repo_display}{'=' * right_equals}\n")
+
+
+def detect_language_and_build_system(repo_name):
+    """Detect the primary language and the build system used in a GitHub repository."""
+    try:
+        repo = g.get_repo(repo_name)
+        primary_language = repo.language
+
+        contents = repo.get_contents("")
+        repo_files = [content.path for content in contents]
+
+        detected_build_systems = []
+        build_systems = {
+            'maven': 'pom.xml',
+            'gradle': 'build.gradle',
+            'npm': 'package.json',
+            'yarn': 'yarn.lock',
+            'make': 'Makefile',
+            'cmake': 'CMakeLists.txt',
+            'bazel': 'BUILD',
+            'go': 'go.mod',
+            'rust': 'Cargo.toml',
+            'python_setuptools': 'setup.py',
+            'python_pip': 'requirements.txt',
+            'python_pyproject': 'pyproject.toml',
+            'ruby_bundler': 'Gemfile',
+            'ruby_gem': '.gemspec',
+            'dotNET_CS': '.csproj',
+            'dotNET_VB': '.vbproj',
+            'dotNET_FS': '.fsproj',
+            'dotNET_Solution': '.sln',
+            'dotNET_SDK': 'global.json',
+            'dotNET_NuGet': 'packages.config'
+        }
+
+        for build_system, indicator_file in build_systems.items():
+            if any(indicator_file in file for file in repo_files):
+                detected_build_systems.append(build_system)
+
+        build_systems_detected = ', '.join(detected_build_systems) if detected_build_systems else "No common build system detected."
+
+        return primary_language, build_systems_detected
+    except Exception as e:
+        print(f"Error fetching repository data for {repo_name}: {e}")
+        return None, None
+
+
+def create_or_update_repo(repo_name):
+    """Create or update a repository in the specified organization."""
+    try:
+        repo = g.get_organization(ORG_NAME).get_repo(repo_name)
+        print(f"Repository '{repo_name}' already exists. Updating...")
+        return repo
+    except Exception:
+        try:
+            print(f"Creating repository '{repo_name}' under organization '{ORG_NAME}'...")
+            repo = g.get_organization(ORG_NAME).create_repo(repo_name)
+            print(f"\033[92mRepository '{repo.name}' created successfully.\033[0m")  # Green for success
+            return repo
+        except Exception as e:
+            print(f"Error creating repository '{repo_name}': {e}")
             return None
 
-def get_build_tool(repo, language):
-    build_file = None
-    response = requests.get(api_url + repo + '/contents', headers={'Authorization': access_token})
-    for item in response.json():
-        if build_file != None:
-            return build_file
-        if item['type'] == 'file':
-            build_file = get_build_tool_helper(item, language)
-        elif item['type'] == 'dir':
-            folder = requests.get(item['url'], headers={'Authorization': access_token})
-            for file in folder.json():
-                if type(file) == dict:
-                    build_file = get_build_tool_helper(file, language)
-                    if build_file != None:
-                        return build_file
 
-    return build_file
+def push_branches_and_tags(local_repo_path, push_url):
+    """Push the branches and tags, excluding problematic refs like pull requests."""
+    try:
+        # Remove any existing remote origin, then add the new one
+        subprocess.run(['git', 'remote', 'rm', 'origin'], cwd=local_repo_path, check=True)
+        subprocess.run(['git', 'remote', 'add', 'origin', push_url], cwd=local_repo_path, check=True)
 
-def print_statements_to_file(repo, language, api_language, branch_count, repo_size, branch_names, build_tool):
-    
-    print('\nFor "' + api_url + repo + '" the language with max size is ' + language)
-    print('and the major language returned by the GitHub API is ' + api_language)
-    print('and the branch count is: ' + str(branch_count))
-    print('and the repo size in KB is: ' + str(repo_size))
-    print('Branch names: ' + str(branch_names))
-    # print('The team names and their permissions are: '+ str(team_names_and_permissions))
+        # Push branches and tags, excluding problematic refs like pull requests
+        print(f"  - Pushing branches and tags to '{push_url}'...")
+        subprocess.run(['git', 'push', '--all'], cwd=local_repo_path, check=True)  # Push all branches
+        subprocess.run(['git', 'push', '--tags'], cwd=local_repo_path, check=True)  # Push all tags
 
-    file = open(logs, 'a')
-    file.write('\nFor "' + api_url + repo + '" the language with max size is ' + language + '\n')
-    file.write('and the major language returned by the GitHub API is ' + api_language + '\n')
-    file.write('and the branch count is: ' + str(branch_count) + '\n')
-    file.write('and the repo size in KB is: ' + str(repo_size) + '\n')
-    file.write('Branch names: ' + str(branch_names) + '\n')
-    # file.write('The team names and their permissions are: '+ str(team_names_and_permissions) + '\n')
-    if language.lower() == 'java' or language.lower() == 'javascript':
-        print('and the ' + language + ' build tool is ' + str(build_tool))
-        file.write('and the ' + language + ' build tool is ' + str(build_tool) + '\n')
-    file.close()
+    except subprocess.CalledProcessError as e:
+        print(f"Error pushing branches and tags: {e}")
 
-    csv_file = open(summary, 'a', newline='')
-    writer = csv.writer(csv_file)
-    # writer.writerow([repo, repo_size, branch_count, language, branch_names, team_names_and_permissions])
-    writer.writerow([repo, repo_size, branch_count, language, branch_names])
 
-    csv_file.close()
+def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
+    """Log migration details to a CSV file without creating duplicate entries."""
+    file_exists = os.path.isfile(csv_file_path)
 
-    return
+    # Read existing entries to check for duplicates
+    existing_entries = []
+    if file_exists:
+        with open(csv_file_path, mode='r', newline='') as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                existing_entries.append(row['source_github_url'])
 
-def get_repo_info(repo):
-    
-    # find major language
-    response = requests.get(api_url + repo + '/languages', headers={'Authorization': access_token})
-    language = max(response.json(), key = response.json().get)
-    response = requests.get(api_url + repo, headers={'Authorization': access_token})
-    api_language = response.json().get('language')
-    
-    # find branch count
-    response = requests.get(api_url + repo + '/branches', headers={'Authorization': access_token})
-    branch_count = len(response.json())
-    
-    # find repo size
-    response = requests.get(api_url + repo, headers={'Authorization': access_token})
-    repo_size = response.json().get('size')
+    # Only log the entry if it doesn't already exist
+    if source_url not in existing_entries:
+        with open(csv_file_path, mode='a', newline='') as csv_file:
+            fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count',
+                          'source_repo_size_kb', 'destination_branch_count', 'destination_repo_size_kb']
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
 
-    # find branch names
-    response = requests.get(api_url + repo + '/branches', headers={'Authorization': access_token})
-    branch_names = [branch['name'] for branch in response.json()]
+            # Write header only if the file doesn't exist
+            if not file_exists:
+                writer.writeheader()
 
-    # find team permissions for the repo
-    # response = requests.get(api_url + repo + '/teams', headers={'Authorization': access_token})
-    # team_names_and_permissions = [(team['name'], team['permission']) for team in response.json()]
+            writer.writerow({
+                'source_github_url': source_url,
+                'target_github_url': target_url,
+                'migrated_with_workflow_file': migrated_with_workflow,
+                'source_branch_count': source_branches,
+                'source_repo_size_kb': source_size,
+                'destination_branch_count': dest_branches,
+                'destination_repo_size_kb': dest_size
+            })
+        print(f"Logged migration for {source_url} to {target_url}.")
+    else:
+        print(f"Duplicate entry detected for {source_url}. Skipping logging.")
 
-    # find build tool
-    build_tool = None
-    if language.lower() == 'java' or language.lower() == 'javascript':
-        build_tool = get_build_tool(repo, language.lower())
-    
-    # print_statements_to_file(repo, language, api_language, branch_count, repo_size, branch_names, team_names_and_permissions, build_tool)
-    print_statements_to_file(repo, language, api_language, branch_count, repo_size, branch_names, build_tool)
 
-    return
-    
-def get_org_info(org):
-    
-    # find team count, names, and permissions
-    response = requests.get(api_org_url + org + '/teams', headers={'Authorization': access_token})
-    team_count = len(response.json())
-    print('For org "' + org + '" the team count is ' + str(team_count))
-    print('The team names are: ' + str([team['name'] for team in response.json()]))
-    file = open(logs, 'a')
-    file.write('For org "' + org + '" the team count is ' + str(team_count) + '\n')
-    file.write('The team names are' + str([team['name'] for team in response.json()]) + '\n')
-    file.close()
+if __name__ == "__main__":
+    # Replace 'your-access-token' with your actual GitHub access token
+    access_token = GITHUB_TOKEN
 
-    return
+    file_path = "repos.txt"  # Replace with your file path
+    repos = []
 
-def main():
-    # dotenv_path = find_dotenv()
-    # load_dotenv(dotenv_path)
-    global file, csv_file, logs, summary, api_url, api_org_url, access_token, org
-    api_url = "https://api.github.com/repos/"
-    api_org_url = "https://api.github.com/users/"
-    access_token = os.getenv('GITHUB_TOKEN')
-    org = "arunbattepati"
-    logs = "logs.txt"
-    summary = "pre-summary.csv"
+    # Load repositories from file
+    try:
+        with open(file_path, "r") as file:
+            repos = [line.strip() for line in file if line.strip()]
+    except Exception as e:
+        print(f"Error reading the file: {e}")
 
-    csv_file = open(summary, 'w', newline='')
-    writer = csv.writer(csv_file)
-    writer.writerow(['Repo', 'Repo Size (KB)', 'Branch Count', 'Language', 'Branch Names', 'Team Names and Permissions'])
-    csv_file.close()
+    if not repos:
+        print("No repositories found in the file.")
+    else:
+        for repo_name in repos:
+            print_separator_with_repo_name(repo_name, phase="Starting migration")
 
-    ct_start = datetime.datetime.now()
-    print('\nStart time ' + str(ct_start) + '\n')
-    file = open(logs, 'a')
-    file.write('\nStart time ' + str(ct_start) + '\n\n')
-    file.close()
+            primary_language, build_system = detect_language_and_build_system(repo_name)
+            if primary_language and build_system:
+                print(f"Repository: {repo_name}")
+                print(f"  - Primary Language: {primary_language}")
+                print(f"  - Build System(s): {build_system}")
 
-    # get_org_info(org)
+                # Fetch the size of the source repo using API
+                source_size = get_repo_size_via_api(repo_name, access_token)
 
-    with open('repos.csv', mode='r') as file:
-        heading = next(file)
-        csvFile = csv.reader(file)
-        for line in csvFile:
-            repo = line[0].split('.com/')[1]
-            get_repo_info(repo)
+                # Fetch details for the destination repo
+                dest_repo_name = f"{ORG_NAME}/{repo_name.split('/')[-1]}"
+                dest_size = get_repo_size_via_api(dest_repo_name, access_token)
 
-    ct_end = datetime.datetime.now()
-    print('\nEnd time ' + str(ct_end))
-    print('Total time taken ' + str(ct_end - ct_start))
-    file = open(logs, 'a')
-    file.write('\nEnd time ' + str(ct_end) + '\n')
-    file.write('Total time taken ' + str(ct_end - ct_start) + '\n\n')
-    file.close()
+                # Log the migration details
+                log_migration_to_csv(f'https://github.com/{repo_name}.git', f'https://github.com/{dest_repo_name}.git',
+                                     True, source_size, 0, dest_size, 0)
 
-    return
-
-if __name__ == '__main__':
-    main()
+                print_separator_with_repo_name(repo_name, phase="End of migration")

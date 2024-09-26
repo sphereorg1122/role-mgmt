@@ -146,27 +146,43 @@ def get_repo_details(repo):
         print(f"Error fetching repo details: {e}")
         return None, None
 
+# def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
 def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
-    """Log migration details to a CSV file."""
+    """Log migration details to a CSV file without creating duplicate entries."""
     file_exists = os.path.isfile(csv_file_path)
-    
-    with open(csv_file_path, mode='a', newline='') as csv_file:
-        fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count', 'source_repo_size_kb', 'destination_branch_count', 'destination_repo_size_kb']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        
-        # Write header only if the file doesn't exist
-        if not file_exists:
-            writer.writeheader()
-        
-        writer.writerow({
-            'source_github_url': source_url,
-            'target_github_url': target_url,
-            'migrated_with_workflow_file': migrated_with_workflow,
-            'source_branch_count': source_branches,
-            'source_repo_size_kb': source_size,
-            'destination_branch_count': dest_branches,
-            'destination_repo_size_kb': dest_size
-        })
+
+    # Read existing entries to check for duplicates
+    existing_entries = []
+    if file_exists:
+        with open(csv_file_path, mode='r', newline='') as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                existing_entries.append(row['source_github_url'])
+
+    # Only log the entry if it doesn't already exist
+    if source_url not in existing_entries:
+        with open(csv_file_path, mode='a', newline='') as csv_file:
+            # fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count', 'source_repo_size_kb', 'destination_branch_count', 'destination_repo_size_kb']
+            fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count']
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+            # Write header only if the file doesn't exist
+            if not file_exists:
+                writer.writeheader()
+
+            writer.writerow({
+                'source_github_url': source_url,
+                'target_github_url': target_url,
+                'migrated_with_workflow_file': migrated_with_workflow,
+                # 'source_branch_count': source_branches,
+                # 'source_repo_size_kb': source_size,
+                # 'destination_branch_count': dest_branches,
+                # 'destination_repo_size_kb': dest_size
+            })
+        print(f"Logged migration for {source_url} to {target_url}.")
+    else:
+        print(f"Duplicate entry detected for {source_url}. Skipping logging.")
+
 
 if __name__ == "__main__":
     file_path = "repos.txt"  # Replace with your file path
