@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import stat
 from github import Github
 import csv
 import time
@@ -15,7 +16,7 @@ if not GITHUB_TOKEN:
 g = Github(GITHUB_TOKEN)
 
 # Organization name where the repositories should be created
-ORG_NAME = "capgemini-cigna-demo"
+ORG_NAME = "capgemini-cg-demo"
 
 # GitHub repo where the CI templates are stored
 CI_TEMPLATE_REPO = "capgemini-ga-demo/github_centralized_workflows"
@@ -55,7 +56,6 @@ def print_separator_with_repo_name(repo_name, phase="Starting migration"):
     repo_display = f" {phase} for {repo_name} "  # Add spaces for padding around repo_name
     num_equals = total_length - len(repo_display)
     
-    # Ensure equal signs are evenly distributed on both sides
     left_equals = num_equals // 2
     right_equals = num_equals - left_equals
     
@@ -124,11 +124,9 @@ def create_or_update_repo(repo_name):
 def push_branches_and_tags(local_repo_path, push_url):
     """Push the branches and tags, excluding problematic refs like pull requests."""
     try:
-        # Remove any existing remote origin, then add the new one
         subprocess.run(['git', 'remote', 'rm', 'origin'], cwd=local_repo_path, check=True)
         subprocess.run(['git', 'remote', 'add', 'origin', push_url], cwd=local_repo_path, check=True)
 
-        # Push branches and tags, excluding problematic refs like pull requests
         print(f"  - Pushing branches and tags to '{push_url}'...")
         subprocess.run(['git', 'push', '--all'], cwd=local_repo_path, check=True)  # Push all branches
         subprocess.run(['git', 'push', '--tags'], cwd=local_repo_path, check=True)  # Push all tags
@@ -146,12 +144,10 @@ def get_repo_details(repo):
         print(f"Error fetching repo details: {e}")
         return None, None
 
-# def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
-def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_size, source_branches, dest_size, dest_branches):
+def log_migration_to_csv(source_url, target_url, migrated_with_workflow):
     """Log migration details to a CSV file without creating duplicate entries."""
     file_exists = os.path.isfile(csv_file_path)
 
-    # Read existing entries to check for duplicates
     existing_entries = []
     if file_exists:
         with open(csv_file_path, mode='r', newline='') as csv_file:
@@ -159,33 +155,39 @@ def log_migration_to_csv(source_url, target_url, migrated_with_workflow, source_
             for row in reader:
                 existing_entries.append(row['source_github_url'])
 
-    # Only log the entry if it doesn't already exist
     if source_url not in existing_entries:
         with open(csv_file_path, mode='a', newline='') as csv_file:
-            # fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count', 'source_repo_size_kb', 'destination_branch_count', 'destination_repo_size_kb']
-            fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file', 'source_branch_count']
+            fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file']
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
 
-            # Write header only if the file doesn't exist
             if not file_exists:
                 writer.writeheader()
 
             writer.writerow({
                 'source_github_url': source_url,
                 'target_github_url': target_url,
-                'migrated_with_workflow_file': migrated_with_workflow,
-                # 'source_branch_count': source_branches,
-                # 'source_repo_size_kb': source_size,
-                # 'destination_branch_count': dest_branches,
-                # 'destination_repo_size_kb': dest_size
+                'migrated_with_workflow_file': migrated_with_workflow
             })
         print(f"Logged migration for {source_url} to {target_url}.")
     else:
         print(f"Duplicate entry detected for {source_url}. Skipping logging.")
 
+# Helper function to remove read-only permission before deleting files
+def remove_readonly(func, path, exc_info):
+    """Change the file to writable before trying to delete it."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+def cleanup_directory(directory_path):
+    """Clean up a directory, ensuring all files are writable before deleting."""
+    try:
+        print(f"  - Cleaning up {directory_path}")
+        shutil.rmtree(directory_path, onerror=remove_readonly)
+    except Exception as e:
+        print(f"  - Error cleaning up {directory_path}: {e}")
 
 if __name__ == "__main__":
-    file_path = "repos.txt"  # Replace with your file path
+    file_path = "repos.txt"
     
     repos = load_repositories_from_file(file_path)
     
@@ -193,7 +195,6 @@ if __name__ == "__main__":
         print("No repositories found in the file.")
     else:
         for repo_name in repos:
-            # Add a separator and indicate the start of migration
             print_separator_with_repo_name(repo_name, phase="Starting migration")
 
             primary_language, build_system = detect_language_and_build_system(repo_name)
@@ -202,7 +203,6 @@ if __name__ == "__main__":
                 print(f"  - Primary Language: {primary_language}")
                 print(f"  - Build System(s): {build_system}")
                 
-                # Get source repo details
                 source_repo = g.get_repo(repo_name)
                 source_size, source_branches = get_repo_details(source_repo)
 
@@ -213,28 +213,44 @@ if __name__ == "__main__":
                     ci_content = fetch_ci_file_from_github(system.strip())
                     if ci_content:
                         ci_found = True
-                        print(f"\033[92m  - Centralized Workflow File Found for {system.strip()} from Centralized Workflow Repository\033[0m")  # Green for success
-                        break  # Stop after finding the first valid Centralized Workflow File
+                        print(f"\033[92m  - Centralized Workflow File Found for {system.strip()} from Centralized Workflow Repository\033[0m")
+                        break
                     else:
-                        # Only print one error message for missing CI file
-                        print(f"\033[91m  - Centralized Workflow File {system.strip()}-ci.yml does not exist in Centralized Workflow Repository.\033[0m")  # Red for failure
+                        print(f"\033[91m  - Centralized Workflow File {system.strip()}-ci.yml does not exist in Centralized Workflow Repository.\033[0m")
 
-                # Proceed with the repository migration regardless of Centralized Workflow File existence
-                local_repo_name = repo_name.split('/')[-1]  
+                local_repo_name = repo_name.split('/')[-1]
                 local_repo_path = os.path.join(os.getcwd(), f"{local_repo_name}-repo")
 
                 if os.path.exists(local_repo_path):
                     print(f"  - Directory '{local_repo_name}-repo' already exists. Removing it.")
+                    shutil.rmtree(local_repo_path, onerror=remove_readonly)
+
+                print(f"  - Cloning the repository as a mirror to '{local_repo_name}-repo'...")
+                subprocess.run(['git', 'clone', '--mirror', f'https://github.com/{repo_name}.git', local_repo_path], check=True)
+
+                temporary_work_dir = os.path.join(os.getcwd(), f"{local_repo_name}-worktree")
+                if os.path.exists(temporary_work_dir):
+                    print(f"  - Temporary worktree directory '{temporary_work_dir}' already exists. Removing it.")
+                    shutil.rmtree(temporary_work_dir)
+
+                subprocess.run(['git', 'clone', local_repo_path, temporary_work_dir], check=True)
+
+                if ci_found and ci_content:
+                    print(f"  - Saving Centralized Workflow File to '{temporary_work_dir}/.github/workflows/'...")
+                    workflow_dir = os.path.join(temporary_work_dir, '.github', 'workflows')
+                    os.makedirs(workflow_dir, exist_ok=True)
+                    ci_file_path = os.path.join(workflow_dir, f"{system.strip()}-ci.yml")
+                    with open(ci_file_path, 'w') as ci_file:
+                        ci_file.write(ci_content)
+
                     try:
-                        shutil.rmtree(local_repo_path)
-                    except Exception as e:
-                        print(f"  - Error removing directory: {e}")
-                        os.system(f'rmdir /S /Q "{local_repo_path}"')
-
-                print(f"  - Cloning the repository to '{local_repo_name}-repo'...")
-
-                # Clone without the --mirror flag to get a working tree
-                subprocess.run(['git', 'clone', f'https://github.com/{repo_name}.git', local_repo_path], check=True)
+                        print(f"  - Committing and pushing the CI file for {local_repo_name}...")
+                        subprocess.run(['git', 'add', '.'], cwd=temporary_work_dir, check=True)
+                        subprocess.run(['git', 'commit', '-m', 'Added CI workflow file'], cwd=temporary_work_dir, check=True)
+                        subprocess.run(['git', 'push', 'origin', 'main'], cwd=temporary_work_dir, check=True)
+                        print(f"\033[92m  - CI file pushed successfully.\033[0m")
+                    except subprocess.CalledProcessError as e:
+                        print(f"\033[91m  - Error committing or pushing the CI file: {e}\033[0m")
 
                 repo = create_or_update_repo(local_repo_name)
 
@@ -242,49 +258,29 @@ if __name__ == "__main__":
                     push_url = f'https://github.com/{ORG_NAME}/{local_repo_name}.git'
                     push_branches_and_tags(local_repo_path, push_url)
 
-                    # Delay to allow GitHub to update repository metadata
                     time.sleep(10)
 
-                    # Refresh the destination repository object and get updated details
                     repo = g.get_organization(ORG_NAME).get_repo(local_repo_name)
                     dest_size, dest_branches = get_repo_details(repo)
 
-                    # If CI content was fetched, save it to the repo and commit the changes
-                    if ci_found and ci_content:
-                        print(f"  - Saving Centralized Workflow File to '{local_repo_name}-repo/.github/workflows/'...")
-                        workflow_dir = os.path.join(local_repo_path, '.github', 'workflows')
-                        os.makedirs(workflow_dir, exist_ok=True)
-                        ci_file_path = os.path.join(workflow_dir, f"{system.strip()}-ci.yml")
-                        with open(ci_file_path, 'w') as ci_file:
-                            ci_file.write(ci_content)
-
-                        # Commit and push the workflow file
-                        try:
-                            print(f"  - Committing and pushing the CI file for {local_repo_name}...")
-                            subprocess.run(['git', 'add', '.'], cwd=local_repo_path, check=True)
-                            subprocess.run(['git', 'commit', '-m', 'Added CI workflow file'], cwd=local_repo_path, check=True)
-                            subprocess.run(['git', 'push', 'origin', 'main'], cwd=local_repo_path, check=True)
-                            print(f"\033[92m  - CI file pushed successfully to {push_url}\033[0m")
-                        except subprocess.CalledProcessError as e:
-                            print(f"\033[91m  - Error committing or pushing the CI file: {e}\033[0m")
-
-                    # Log the migration details
                     source_url = f'https://github.com/{repo_name}.git'
                     target_url = push_url
-                    log_migration_to_csv(source_url, target_url, ci_found, source_size, source_branches, dest_size, dest_branches)
+                    log_migration_to_csv(source_url, target_url, ci_found)
 
-                    # Clean up the local repo after push
-                    try:
-                        shutil.rmtree(local_repo_path)
-                    except Exception as e:
-                        os.system(f'rmdir /S /Q "{local_repo_path}"')
+                    # Run garbage collection to release any locks before cleanup
+                    subprocess.run(['git', 'gc'], cwd=temporary_work_dir, check=True)
 
-                    print(f"\033[92m  - Migration complete for repository: {repo_name}\033[0m")  # Green for success
+                    # Clean up local mirrored repository
+                    cleanup_directory(local_repo_path)
+
+                    # Clean up temporary working directory
+                    cleanup_directory(temporary_work_dir)
+
+                    print(f"\033[92m  - Migration complete for repository: {repo_name}\033[0m")
                 else:
-                    print(f"\033[91mFailed to create or update repository '{local_repo_name}' in organization '{ORG_NAME}'.\033[0m")  # Red for failure
+                    print(f"\033[91mFailed to create or update repository '{local_repo_name}' in organization '{ORG_NAME}'.\033[0m")
 
             else:
-                print(f"\033[91mCould not determine the language or build system for repository: {repo_name}\033[0m")  # Red for failure
+                print(f"\033[91mCould not determine the language or build system for repository: {repo_name}\033[0m")
 
-            # End of migration, add another separator
             print_separator_with_repo_name(repo_name, phase="End of migration")
