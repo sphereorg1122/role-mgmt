@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from github import Github
+import csv
 
 # GitHub Personal Access Token from environment variable
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
@@ -39,8 +40,11 @@ build_systems = {
     'dotNET_NuGet': 'packages.config'
 }
 
-# Directory path for checking build system Centralized workflow file
+# Directory path for checking build system CI files
 ci_directory = 'github_centralized_workflows'
+
+# CSV file path
+csv_file_path = "migration_log.csv"
 
 def detect_language_and_build_system(repo_name):
     """Detect the primary language and the build system used in a GitHub repository."""
@@ -73,7 +77,7 @@ def load_repositories_from_file(file_path):
         return []
 
 def check_ci_file_exists(ci_directory, build_system):
-    """Check if a Centralized workflow file for the build system exists in the given directory."""
+    """Check if a CI file for the build system exists in the given directory."""
     ci_file = os.path.join(ci_directory, f"{build_system}-ci.yml")
     return ci_file if os.path.exists(ci_file) else None
 
@@ -108,6 +112,24 @@ def push_branches_and_tags(local_repo_path, push_url):
     except subprocess.CalledProcessError as e:
         print(f"Error pushing branches and tags: {e}")
 
+def log_migration_to_csv(source_url, target_url, migrated_with_workflow):
+    """Log migration details to a CSV file."""
+    file_exists = os.path.isfile(csv_file_path)
+    
+    with open(csv_file_path, mode='a', newline='') as csv_file:
+        fieldnames = ['source_github_url', 'target_github_url', 'migrated_with_workflow_file']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        
+        # Write header only if the file doesn't exist
+        if not file_exists:
+            writer.writeheader()
+        
+        writer.writerow({
+            'source_github_url': source_url,
+            'target_github_url': target_url,
+            'migrated_with_workflow_file': migrated_with_workflow
+        })
+
 if __name__ == "__main__":
     file_path = "repos.txt"  # Replace with your file path
     
@@ -129,11 +151,11 @@ if __name__ == "__main__":
                     ci_file_path = check_ci_file_exists(ci_directory, system.strip())
                     if ci_file_path:
                         ci_found = True
-                        print(f"  - Centralized workflow file: {ci_file_path}")
+                        print(f"  - CI File Found: {ci_file_path}")
                     else:
-                        print(f"  - No matching Centralized workflow file found for {system.strip()} in {ci_directory}")
+                        print(f"  - No matching CI file found for {system.strip()} in {ci_directory}")
 
-                # Proceed with the repository migration regardless of Centralized workflow file existence
+                # Proceed with the repository migration regardless of CI file existence
                 local_repo_name = repo_name.split('/')[-1]  
                 local_repo_path = os.path.join(os.getcwd(), f"{local_repo_name}-repo")
 
@@ -154,13 +176,18 @@ if __name__ == "__main__":
                     push_url = f'https://github.com/{ORG_NAME}/{local_repo_name}.git'
                     push_branches_and_tags(local_repo_path, push_url)
 
-                    # Only copy the Centralized workflow file if it exists
+                    # Only copy the CI file if it exists
                     if ci_found:
-                        print(f"  - Moving Centralized workflow file to '{local_repo_name}-repo/.github/workflows/'...")
+                        print(f"  - Moving CI file to '{local_repo_name}-repo/.github/workflows/'...")
                         os.makedirs(os.path.join(local_repo_path, '.github', 'workflows'), exist_ok=True)
                         shutil.copy(ci_file_path, os.path.join(local_repo_path, '.github', 'workflows'))
                     else:
-                        print(f"  - No Centralized workflow file to copy for '{local_repo_name}-repo'.")
+                        print(f"  - No CI file to copy for '{local_repo_name}-repo'.")
+
+                    # Log the migration details
+                    source_url = f'https://github.com/{repo_name}.git'
+                    target_url = push_url
+                    log_migration_to_csv(source_url, target_url, ci_found)
 
                     # Clean up the local repo after push
                     try:
