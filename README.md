@@ -49,27 +49,26 @@ The pre-migration script (`pre_migration.py`) gathers pre-migration details for 
    ```bash
    python pre_migration.py
 4. The script will generate pre_migration_summary.csv with the details of each source repository.
+---
 
-Migration Script
-Description:
+## Migration Script
+### Description:
 The migration script (migration.py) automates the migration of repositories from the source organization to the target organization. It creates or updates repositories in the target organization, clones the repositories, pushes them to the target, and optionally adds CI workflow files.
 
-Migration Process:
-Clones the source repositories.
-Adds CI workflow files (optional).
-Pushes the repositories to the target organization.
-Logs the details of each migration in migration_summary.csv and generates target_repos.csv containing the list of migrated repositories in org/repo format.
-How to Use:
-Prepare your source_repos.csv file with the list of source repositories (format: org/repo).
-Set your GitHub token as an environment variable:
-bash
-Copy code
-export GITHUB_TOKEN=<your-github-token>
-Run the migration.py script:
-bash
-Copy code
-python migration.py
-The script will generate two files:
+### Migration Process:
+- Clones the source repositories.
+- Adds CI workflow files (optional).
+- Pushes the repositories to the target organization.
+- Logs the details of each migration in migration_summary.csv and generates target_repos.csv containing the list of migrated repositories in org/repo format.
+### How to Use:
+1. Prepare your source_repos.csv file with the list of source repositories (format: org/repo).
+2. Set your GitHub token as an environment variable:
+   ```bash
+   export GITHUB_TOKEN=<your-github-token>
+3. Run the migration.py script:
+   ```bash
+   python migration.py
+4. The script will generate two files:
 migration_summary.csv: Details of each migrated repository.
 target_repos.csv: A list of the migrated repositories in the target organization.
 Files Generated:
@@ -106,7 +105,7 @@ The script will generate post_migration_summary.csv containing a comparison of t
 
 Files Generated:
 post_migration_summary.csv: Contains a comparison of the source and target repositories, including details such as branch count, repository size, branch names, build system, and a status indicating if the migration was successful (Match or Mismatch).
-Example CSV Files
+## Example CSV Files
 source_repos.csv:
 bash
 Copy code
