@@ -1,3 +1,0 @@
-arunbattepati/java-app
-arunbattepati/npm-app
-senseops/python_app
