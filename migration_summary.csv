@@ -1,0 +1,4 @@
+source_github_url,target_github_url,migrated_with_workflow_file
+https://github.com/arunbattepati/java-app.git,https://github.com/capgemini-cg-demo/java-app.git,True
+https://github.com/arunbattepati/npm-app.git,https://github.com/capgemini-cg-demo/npm-app.git,True
+https://github.com/arunbattepati/python_app.git,https://github.com/capgemini-cg-demo/python_app.git,False

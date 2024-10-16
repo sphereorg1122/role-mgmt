@@ -1,0 +1,4 @@
+source_repo,target_repo,source_primary_language,target_primary_language,source_branch_count,target_branch_count,source_repo_size,target_repo_size,source_branches,target_branches,source_build_system,target_build_system,status
+arunbattepati/java-app,capgemini-cg-demo/java-app,Java,Java,2,2,4,0,"main, test123","main, test123",maven,maven,Mismatch
+arunbattepati/npm-app,capgemini-cg-demo/npm-app,JavaScript,JavaScript,1,1,2,0,main,main,npm,npm,Mismatch
+arunbattepati/python_app,capgemini-cg-demo/python_app,Python,Python,1,1,0,0,main,main,python_pip,python_pip,Match
