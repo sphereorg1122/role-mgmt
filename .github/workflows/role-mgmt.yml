@@ -32,6 +32,6 @@ jobs:
         ORG_NAME: 'sphere1122'
         REPO_NAME: 'role-mgmt'
         TEAM_NAME: 'sphere-team'
-        ROLE: 'maintain'
+        ROLE: 'member'
       run: |
         python gh_migration.py
