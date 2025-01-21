@@ -28,7 +28,7 @@ jobs:
 
     - name: Run Python script
       env:
-        GITHUB_TOKEN: ${{ secrets.MIGKEY1 }}
+        GITHUB_TOKEN: ${{ secrets.MIGKEY }}
         ORG_NAME: 'sphere1122'
         REPO_NAME: 'role-mgmt'
         TEAM_NAME: 'sphere-team'
