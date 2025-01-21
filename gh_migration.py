@@ -5,7 +5,7 @@ GITHUB_TOKEN = os.getenv('MIGKEY')
 ORG_NAME = 'sphere1122'
 REPO_NAME = 'role-mgmt'
 TEAM_NAME = 'sphere-team'
-ROLE = 'maintain'  # Possible values: 'pull', 'push', 'maintain', 'admin'
+ROLE = 'member'  # Possible values: 'pull', 'push', 'maintain', 'admin'
 
 def add_team_to_repo(org, repo, team, role, token):
     url = f'https://api.github.com/orgs/sphere1122/teams/sphere-team/repos/sphere1122/role-mgmt'
