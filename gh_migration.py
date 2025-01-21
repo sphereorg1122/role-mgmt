@@ -8,7 +8,7 @@ TEAM_NAME = 'sphere-team'
 ROLE = 'maintain'  # Possible values: 'pull', 'push', 'maintain', 'admin'
 
 def add_team_to_repo(org, repo, team, role, token):
-    url = f'https://api.github.com/orgs/{org}/teams/{team}/repos/{org}/{repo}'
+    url = f'https://api.github.com/orgs/sphere1122/teams/sphere-team/repos/sphere1122/role-mgmt'
     headers = {
         'Authorization': f'token {token}',
         'Accept': 'application/vnd.github.v3+json'
