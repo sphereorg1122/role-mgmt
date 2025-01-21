@@ -2,9 +2,9 @@ import requests
 import os
 # Replace these variables with your own values
 GITHUB_TOKEN = os.getenv('MIGKEY')
-ORG_NAME = 'your_organization_name'
-REPO_NAME = 'your_repository_name'
-TEAM_NAME = 'your_team_name'
+ORG_NAME = 'sphere1122'
+REPO_NAME = 'role-mgmt'
+TEAM_NAME = 'sphere-team'
 ROLE = 'maintain'  # Possible values: 'pull', 'push', 'maintain', 'admin'
 
 def add_team_to_repo(org, repo, team, role, token):
