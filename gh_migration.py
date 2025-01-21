@@ -1,5 +1,5 @@
 import requests
-
+import os
 # Replace these variables with your own values
 GITHUB_TOKEN = os.getenv('MIGKEY')
 ORG_NAME = 'your_organization_name'
