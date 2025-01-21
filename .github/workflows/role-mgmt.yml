@@ -34,4 +34,4 @@ jobs:
         TEAM_NAME: 'orange'
         ROLE: 'maintain'
       run: |
-        python gh_util_role_mgmt.py
+        python gh_migration.py
