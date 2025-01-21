@@ -29,9 +29,9 @@ jobs:
     - name: Run Python script
       env:
         GITHUB_TOKEN: ${{ secrets.MIGKEY1 }}
-        ORG_NAME: 'orange-1019'
-        REPO_NAME: 'migration-utilities'
-        TEAM_NAME: 'orange'
+        ORG_NAME: 'sphere1122'
+        REPO_NAME: 'role-mgmt'
+        TEAM_NAME: 'sphere-team'
         ROLE: 'maintain'
       run: |
         python gh_migration.py
